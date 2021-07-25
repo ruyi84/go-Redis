@@ -5,11 +5,12 @@ import "C"
 import (
 	"bufio"
 	"fmt"
+	"goRedis/model"
 	"net"
+	"strconv"
 	"strings"
+	"time"
 )
-
-var m = map[string]string{}
 
 func main() {
 	addr := &net.TCPAddr{
@@ -24,6 +25,13 @@ func main() {
 	}
 
 	defer tcp.Close()
+
+	go func() {
+		for  {
+			model.SaveToFile()
+			time.Sleep(time.Second)
+		}
+	}()
 
 	for {
 		acceptTCP, err := tcp.Accept()
@@ -60,7 +68,14 @@ func tcpRead(conn net.Conn) {
 				conn.Write([]byte("set parsing is wrong \n"))
 				continue
 			}
-			m[split[1]] = split[2]
+			var expireDate int
+			if len(split) > 3 {
+				expireDate, err = strconv.Atoi(split[4])
+				if err != nil {
+					failed(conn, "parsing is wrong.")
+				}
+			}
+			model.Set(split[1], split[2], expireDate)
 			conn.Write([]byte("Ok \n"))
 			continue
 		case "Del":
@@ -68,22 +83,35 @@ func tcpRead(conn net.Conn) {
 				conn.Write([]byte("set parsing is wrong \n"))
 				continue
 			}
-			delete(m, split[1])
-			conn.Write([]byte("Ok \n"))
+			model.Del(split[1])
 			continue
 		case "Get":
 			if len(split) != 2 {
 				conn.Write([]byte("get parsing is wrong \n"))
 				continue
 			}
-			result := fmt.Sprintf("%s ", m[split[1]])
-			conn.Write([]byte(result + "\n"))
+			value := model.Get(split[1])
+			success(conn, value)
 			continue
 		}
 		conn.Write([]byte("wrong \n"))
 	}
 }
 
-func Set() {
-	fmt.Println("adsf")
+func failed(conn net.Conn, failedMsg string) error {
+	msg := fmt.Sprintf("command failed:%s \n", failedMsg)
+	_, err := conn.Write([]byte(msg))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func success(conn net.Conn, value interface{}) {
+	msg := fmt.Sprintf("%s \n", value)
+	_, err := conn.Write([]byte(msg))
+	if err != nil {
+		return
+	}
+	return
 }
