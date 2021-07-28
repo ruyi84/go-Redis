@@ -27,7 +27,7 @@ func main() {
 	defer tcp.Close()
 
 	go func() {
-		for  {
+		for {
 			model.SaveToFile()
 			time.Sleep(time.Second)
 		}
@@ -46,6 +46,7 @@ func main() {
 }
 
 func tcpRead(conn net.Conn) {
+	disk := model.GetDisk()
 	reader := bufio.NewReader(conn)
 
 	for {
@@ -61,11 +62,19 @@ func tcpRead(conn net.Conn) {
 		fmt.Println(split)
 		switch split[0] {
 		case "Ping":
-			conn.Write([]byte("Pong \n"))
+			success(conn, []byte("Pong \n"))
+			continue
+		case "Keys":
+			var search string
+			if len(split) > 1 {
+				search = split[1]
+			}
+			keys := disk.Keys(search)
+			success(conn, keys)
 			continue
 		case "Set":
 			if len(split) != 3 {
-				conn.Write([]byte("set parsing is wrong \n"))
+				failed(conn, "set parsing is wrong.")
 				continue
 			}
 			var expireDate int
@@ -75,36 +84,36 @@ func tcpRead(conn net.Conn) {
 					failed(conn, "parsing is wrong.")
 				}
 			}
-			model.Set(split[1], split[2], expireDate)
-			conn.Write([]byte("Ok \n"))
+			disk.Set(split[1], split[2], expireDate)
+			success(conn, "Ok")
 			continue
 		case "Del":
 			if len(split) != 2 {
-				conn.Write([]byte("set parsing is wrong \n"))
+				success(conn, "set parsing is wrong")
 				continue
 			}
-			model.Del(split[1])
+			disk.Del(split[1])
 			continue
 		case "Get":
 			if len(split) != 2 {
-				conn.Write([]byte("get parsing is wrong \n"))
+				failed(conn, "get parsing is wrong")
 				continue
 			}
-			value := model.Get(split[1])
+			value := disk.Get(split[1])
 			success(conn, value)
 			continue
 		}
-		conn.Write([]byte("wrong \n"))
+		failed(conn, "wrong")
 	}
 }
 
-func failed(conn net.Conn, failedMsg string) error {
+func failed(conn net.Conn, failedMsg string) {
 	msg := fmt.Sprintf("command failed:%s \n", failedMsg)
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
-		return err
+		return
 	}
-	return nil
+	return
 }
 
 func success(conn net.Conn, value interface{}) {

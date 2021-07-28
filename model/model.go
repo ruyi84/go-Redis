@@ -2,15 +2,19 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"time"
 )
 
-var M map[string]Value
+type Disk map[string]Value
+
+var disk Disk
 
 func init() {
-	M = make(map[string]Value)
+	disk = make(Disk)
 
 	_, err := os.Stat("./saveData.json")
 	if err == nil {
@@ -19,11 +23,15 @@ func init() {
 			panic(err)
 		}
 
-		err = json.Unmarshal(saveData, &M)
+		err = json.Unmarshal(saveData, &disk)
 		if err != nil {
 			panic(err)
 		}
 	}
+}
+
+func GetDisk() Disk {
+	return disk
 }
 
 type Value struct {
@@ -31,29 +39,43 @@ type Value struct {
 	ExpireDate int
 }
 
-func Set(key string, value interface{}, expireDate int) {
-	M[key] = Value{
+func (disk Disk) Set(key string, value interface{}, expireDate int) {
+	disk[key] = Value{
 		Value:      value,
 		ExpireDate: expireDate,
 	}
 }
 
-func Get(key string) interface{} {
+func (disk Disk) Get(key string) interface{} {
 	now := time.Now().UnixNano() / 1e6
-	value := M[key]
+	value := disk[key]
 	if value.ExpireDate == 0 || int64(value.ExpireDate) >= now {
 		return value.Value
 	}
-	delete(M, key)
+	delete(disk, key)
 	return nil
 }
 
-func Del(key string) {
-	delete(M, key)
+func (disk Disk) Del(key string) {
+	delete(disk, key)
+}
+
+func (disk Disk) Keys(search string) []string {
+	var keyList []string
+	for key := range disk {
+		matchString, err := regexp.MatchString(search, key)
+		if err != nil || !matchString {
+			fmt.Println(search, key)
+			continue
+		}
+		keyList = append(keyList, key)
+	}
+
+	return keyList
 }
 
 func SaveToFile() {
-	nowMap := M
+	nowMap := disk
 
 	marshal, err := json.Marshal(nowMap)
 	if err != nil {
